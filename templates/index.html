@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang = "en">
+    <head>
+        <meta charset = "UTF-8">
+        <meta name="viewport"content= "width=device-width, initial-scale=1.0">
+        <title> Stock Price Predictor Dashboard</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+        <style>
+            body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+            .hero-banner { background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; border-radius: 12px; padding: 30px; }
+            .card { border: none; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            .metric-value { font-size: 1.8rem; font-weight: bold; }
+
+        </style>
+    </head>
+    <body>
+        <div class="container my-4">
+    <!-- Promotional Hero Header -->
+    <div class="hero-banner mb-4 d-flex justify-content-between align-items-center flex-wrap">
+        <div>
+            <h1 class="fw-bold">AI Stock Market Predictor</h1>
+            <p class="mb-0">Analyze historical trends and forecast future prices using Machine Learning.</p>
+        </div>
+        
+        <div class="mt-3 mt-md-0">
+            <img src="{{ url_for('static', filename='images/stock_promo.jfif') }}"
+                 alt="Stock Market Analysis Graphic" 
+                 class="img-fluid rounded shadow" 
+                 style="max-height: 120px;"
+                 onerror="this.style.display='none'">
+        </div>
+    </div>
+    <div class="card p-4 mb-4">
+        <form id="prediction-form" class="row g-3 align-items-center">
+            <div class="col-md-4">
+                <label for="ticker" class="form-label fw-semibold">Stock Ticker Symbol</label>
+                <input type="text" class="form-control" id="ticker" placeholder="e.g. AAPL, MSFT, TSLA" value="AAPL" required>
+            </div>
+            <div class="col-md-3">
+                <label for="period" class="form-label fw-semibold">Historical Range</label>
+                <select class="form-select" id="period">
+                    <option value="30">1 Month</option>
+                    <option value="180">6 Months</option>
+                    <option value="365">1 Year</option>
+                    <option value="730" selected>2 Years</option>
+                    <option value="1825">5 Years</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="days" class="form-label fw-semibold">Forecast Days</label>
+                <input type="number" class="form-control" id="days" value="30" min="1" max="90">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100 fw-bold" id="submit-btn">
+                    Predict Stock
+                </button>
+            </div>
+        </form>
+    </div>
+    <div id="loading" class="text-center my-5 d-none">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+        <p class="mt-2 text-muted fw-semibold">Fetching historical data and running ML prediction model...</p>
+    </div>
+    <div id="error-alert" class="alert alert-danger d-none" role="alert"></div>
+<div id = "dashboard">
+    <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card p-3 text-center border-start border-4 border-primary">
+                    <span class="text-muted small uppercase">R² Confidence Score</span>
+                    <div class="metric-value text-primary" id="r2-score">0.00%</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 text-center border-start border-4 border-info">
+                    <span class="text-muted small">RMSE Error Metric</span>
+                    <div class="metric-value text-info" id="rmse-score">$0.00</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 text-center border-start border-4 border-success">
+                    <span class="text-muted small">Target Predicted Price</span>
+                    <div class="metric-value text-success" id="target-price">$0.00</div>
+                </div>
+            </div>
+        </div>
+        <div class="card p-3">
+            <div id="stock-chart" style="width:100%; height:500px;"></div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<script>
+document.getElementById('prediction-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    // 1. Read LIVE values directly from HTML elements at the moment of click
+    const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+    const period = document.getElementById('period').value;
+    const days = parseInt(document.getElementById('days').value, 10);
+    const submitBtn = document.getElementById('submit-btn');
+    const loading = document.getElementById('loading');
+    const errorAlert = document.getElementById('error-alert');
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Analyzing Data...';
+    if (loading) loading.classList.remove('d-none');
+    if (errorAlert) errorAlert.classList.add('d-none');
+    try {
+       
+        const response = await fetch('/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticker: ticker,period: period, days: days })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert('Error: ' + (data.error || 'Failed to fetch data'));
+            return;
+        }
+
+        const dashboard = document.getElementById('dashboard');
+        if (dashboard) dashboard.classList.remove('d-none');
+        document.getElementById('r2-score').innerText = (data.r2_score * 100).toFixed(2) + '%';
+        document.getElementById('rmse-score').innerText = '$' + data.rmse.toFixed(2);
+        
+        const lastPredictedPrice = data.future_prices[data.future_prices.length - 1];
+        document.getElementById('target-price').innerText = '$' + lastPredictedPrice.toFixed(2);
+
+        
+        const traceHistorical = {
+            x: data.historical_dates,
+            y: data.historical_prices,
+            mode: 'lines',
+            name: `${data.ticker} Historical Close`,
+            line: { color: '#0d6efd', width: 2 }
+        };
+
+        const traceFuture = {
+            x: data.future_dates,
+            y: data.future_prices,
+            mode: 'lines',
+            name: 'Predicted Forecast',
+            line: { color: '#198754', width: 2, dash: 'dot' }
+        };
+
+        const layout = {
+            title: `${data.ticker} - Price Prediction (${days} Days)`,
+            xaxis: { title: 'Date' },
+            yaxis: { title: 'Price (USD)' }
+        };
+
+        Plotly.newPlot('stock-chart', [traceHistorical, traceFuture], layout);
+
+    } catch (err) {
+        console.error('Fetch error:', err);
+        if (errorAlert) {
+            errorAlert.innerText = 'Server connection error. Ensure Flask app is running.';
+            errorAlert.classList.remove('d-none');
+        }
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Predict Stock';
+        if (loading) loading.classList.add('d-none');
+    }
+});
+</script>
+    </body>
+
+</html>
